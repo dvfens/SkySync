@@ -13,11 +13,13 @@ export async function fetchWeatherAlerts(
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'WeatherApp/1.0',
+        'Accept': 'application/geo+json',
       },
     });
 
     if (!response.ok) {
-      if (response.status === 404) {
+      if (response.status === 404 || response.status === 400) {
+        // 400 can occur for some coordinates or parameter combinations. Treat as no active alerts.
         return [];
       }
       throw new Error(`NWS API error: ${response.status}`);
