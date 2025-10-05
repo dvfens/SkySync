@@ -21,8 +21,9 @@ export default function HomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState<string>('');
   const [searching, setSearching] = useState<boolean>(false);
+  const [dateQuery, setDateQuery] = useState<string>(''); // YYYY-MM-DD
 
-  const loadWeatherData = async (showRefreshIndicator = false, overrideLocation?: LocationData) => {
+  const loadWeatherData = async (showRefreshIndicator = false, overrideLocation?: LocationData, dateStr?: string) => {
     try {
       if (showRefreshIndicator) {
         setRefreshing(true);
@@ -39,7 +40,7 @@ export default function HomeScreen() {
 
       setLocation(userLocation);
 
-      const { current, hourly } = await fetchWeatherData(userLocation);
+      const { current, hourly } = await fetchWeatherData(userLocation, dateStr);
       setWeather(current);
       setHourlyForecast(hourly);
 
@@ -133,6 +134,22 @@ export default function HomeScreen() {
           />
           <TouchableOpacity style={styles.searchButton} onPress={onSearch} disabled={searching}>
             <Text style={styles.searchButtonText}>{searching ? '...' : 'Search'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchBarContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="YYYY-MM-DD (optional date)"
+            placeholderTextColor="#cbd5e1"
+            value={dateQuery}
+            onChangeText={setDateQuery}
+            returnKeyType="done"
+          />
+          <TouchableOpacity
+            style={styles.searchButton}
+            onPress={() => loadWeatherData(false, undefined, dateQuery || undefined)}>
+            <Text style={styles.searchButtonText}>Set Date</Text>
           </TouchableOpacity>
         </View>
         <ScrollView
