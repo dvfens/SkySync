@@ -4,6 +4,9 @@ import { LocationData } from '@/types/weather';
 
 // Google Maps Geocoding API
 const GOOGLE_GEOCODE_URL = 'https://maps.googleapis.com/maps/api/geocode/json';
+// Open‑Meteo Geocoding (no key, global coverage)
+const OM_GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
+const OM_REVERSE_URL = 'https://geocoding-api.open-meteo.com/v1/reverse';
 
 export async function requestLocationPermission(): Promise<boolean> {
   try {
@@ -83,29 +86,46 @@ export async function searchPlace(query: string): Promise<LocationData | null> {
       }
     }
 
+    // Prefer Google if key present; otherwise fall back to Open‑Meteo
     const apiKey = (Constants?.expoConfig?.extra as any)?.GOOGLE_MAPS_API_KEY
       || (Constants?.manifest as any)?.extra?.GOOGLE_MAPS_API_KEY;
-    if (!apiKey || apiKey === 'PUT_YOUR_API_KEY_HERE') {
-      console.warn('Missing GOOGLE_MAPS_API_KEY in app.json extra.');
-    }
 
-    const params = new URLSearchParams({
-      address: trimmed,
-      key: apiKey || '',
-    });
-    const url = `${GOOGLE_GEOCODE_URL}?${params.toString()}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || !data.results || data.results.length === 0) return null;
-    const r = data.results[0];
-    const loc: LocationData = {
-      latitude: r.geometry.location.lat,
-      longitude: r.geometry.location.lng,
-      city: r.address_components?.find((c: any) => c.types.includes('locality'))?.long_name,
-      region: r.address_components?.find((c: any) => c.types.includes('administrative_area_level_1'))?.long_name || r.address_components?.find((c: any) => c.types.includes('country'))?.long_name
-    } as any;
-    return loc;
+    const tryGoogle = async (): Promise<LocationData | null> => {
+      if (!apiKey || apiKey === 'PUT_YOUR_API_KEY_HERE') return null;
+      const params = new URLSearchParams({ address: trimmed, key: apiKey });
+      const url = `${GOOGLE_GEOCODE_URL}?${params.toString()}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || !data.results || data.results.length === 0) return null;
+      const r = data.results[0];
+      return {
+        latitude: r.geometry.location.lat,
+        longitude: r.geometry.location.lng,
+        city: r.address_components?.find((c: any) => c.types.includes('locality'))?.long_name,
+        region:
+          r.address_components?.find((c: any) => c.types.includes('administrative_area_level_1'))?.long_name ||
+          r.address_components?.find((c: any) => c.types.includes('country'))?.long_name,
+      } as any;
+    };
+
+    const tryOpenMeteo = async (): Promise<LocationData | null> => {
+      const params = new URLSearchParams({ name: trimmed, count: '1', language: 'en', format: 'json' });
+      const url = `${OM_GEOCODE_URL}?${params.toString()}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data?.results?.length) return null;
+      const r = data.results[0];
+      return {
+        latitude: r.latitude,
+        longitude: r.longitude,
+        city: r.name,
+        region: r.admin1 || r.country,
+      } as any;
+    };
+
+    return (await tryGoogle()) || (await tryOpenMeteo());
   } catch (e) {
     console.error('Error searching place:', e);
     return null;

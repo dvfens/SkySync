@@ -74,13 +74,14 @@ export default function HomeScreen() {
     try {
       setSearching(true);
       setError(null);
-      // Geocode using Open-Meteo geocoding API (no key)
+      // Try coordinates or place name via Google/Open‑Meteo helper
       const newLoc = await searchPlace(q);
       if (!newLoc) {
         setError('Place not found. Try a different query.');
         return;
       }
       await loadWeatherData(false, newLoc);
+      setLocation(newLoc);
     } catch (e) {
       console.error(e);
       setError('Search failed. Please try again.');
