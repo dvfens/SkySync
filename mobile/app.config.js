@@ -6,7 +6,8 @@ module.exports = ({ config }) => {
     ...config,
     extra: {
       ...(config.extra || {}),
-      GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || ''
+      GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+      NASA_API_KEY: process.env.EXPO_PUBLIC_NASA_API_KEY || ''
     }
   };
 };

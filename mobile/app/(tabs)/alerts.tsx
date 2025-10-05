@@ -5,6 +5,7 @@ import GradientBackground from '@/components/GradientBackground';
 import AlertBanner from '@/components/AlertBanner';
 import { WeatherAlert, LocationData } from '@/types/weather';
 import { fetchWeatherAlerts } from '@/utils/alertsApi';
+import { fetchNasaSpaceWeatherAlerts } from '@/utils/nasaAlertsApi';
 import { getCurrentLocation } from '@/utils/locationService';
 import { TriangleAlert as AlertTriangle, RefreshCw } from 'lucide-react-native';
 
@@ -32,8 +33,14 @@ export default function AlertsScreen() {
 
       setLocation(userLocation);
 
-      const weatherAlerts = await fetchWeatherAlerts(userLocation);
-      setAlerts(weatherAlerts);
+      const [weatherAlerts, nasaAlerts] = await Promise.all([
+        fetchWeatherAlerts(userLocation),
+        fetchNasaSpaceWeatherAlerts(userLocation),
+      ]);
+      // Merge and de-duplicate by id
+      const merged = [...weatherAlerts, ...nasaAlerts];
+      const unique = Array.from(new Map(merged.map((a) => [a.id, a])).values());
+      setAlerts(unique);
     } catch (err) {
       setError('Failed to load weather alerts. Please try again.');
       console.error(err);
@@ -89,7 +96,7 @@ export default function AlertsScreen() {
     <GradientBackground condition="cloudy">
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Weather Alerts</Text>
+          <Text style={styles.headerTitle}>Weather & Space Alerts</Text>
           {location && (
             <Text style={styles.headerLocation}>
               {location.city}, {location.region}
