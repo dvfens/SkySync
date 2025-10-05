@@ -1,0 +1,180 @@
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import GradientBackground from '@/components/GradientBackground';
+import WeatherCard from '@/components/WeatherCard';
+import HourlyForecast from '@/components/HourlyForecast';
+import AlertBanner from '@/components/AlertBanner';
+import { WeatherData, HourlyForecast as HourlyForecastType, WeatherAlert, LocationData } from '@/types/weather';
+import { fetchWeatherData } from '@/utils/weatherApi';
+import { fetchWeatherAlerts } from '@/utils/alertsApi';
+import { getCurrentLocation } from '@/utils/locationService';
+import { RefreshCw } from 'lucide-react-native';
+
+export default function HomeScreen() {
+  const [location, setLocation] = useState<LocationData | null>(null);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [hourlyForecast, setHourlyForecast] = useState<HourlyForecastType[]>([]);
+  const [alerts, setAlerts] = useState<WeatherAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadWeatherData = async (showRefreshIndicator = false) => {
+    try {
+      if (showRefreshIndicator) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      const userLocation = await getCurrentLocation();
+      if (!userLocation) {
+        setError('Unable to get location. Please enable location permissions.');
+        return;
+      }
+
+      setLocation(userLocation);
+
+      const { current, hourly } = await fetchWeatherData(userLocation);
+      setWeather(current);
+      setHourlyForecast(hourly);
+
+      const weatherAlerts = await fetchWeatherAlerts(userLocation);
+      setAlerts(weatherAlerts);
+    } catch (err) {
+      setError('Failed to load weather data. Please try again.');
+      console.error(err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadWeatherData();
+
+    const interval = setInterval(() => {
+      loadWeatherData(true);
+    }, 300000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    loadWeatherData(true);
+  }, []);
+
+  if (loading) {
+    return (
+      <GradientBackground condition="cloudy">
+        <SafeAreaView style={styles.container}>
+          <View style={styles.loadingContainer}>
+            <RefreshCw size={48} color="#FFFFFF" strokeWidth={2} />
+            <Text style={styles.loadingText}>Fetching Weather...</Text>
+          </View>
+        </SafeAreaView>
+      </GradientBackground>
+    );
+  }
+
+  if (error || !weather) {
+    return (
+      <GradientBackground condition="cloudy">
+        <SafeAreaView style={styles.container}>
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{error || 'Unable to load weather data'}</Text>
+            <Text style={styles.retryText} onPress={() => loadWeatherData()}>
+              Tap to retry
+            </Text>
+          </View>
+        </SafeAreaView>
+      </GradientBackground>
+    );
+  }
+
+  return (
+    <GradientBackground condition={weather.condition}>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#FFFFFF"
+            />
+          }>
+          <WeatherCard weather={weather} location={location || undefined} />
+
+          {hourlyForecast.length > 0 && (
+            <HourlyForecast forecasts={hourlyForecast} />
+          )}
+
+          {alerts.length > 0 && (
+            <View style={styles.alertsSection}>
+              <Text style={styles.alertsTitle}>Weather Alerts</Text>
+              {alerts.map((alert, index) => (
+                <AlertBanner key={alert.id} alert={alert} index={index} />
+              ))}
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </GradientBackground>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textDecorationLine: 'underline',
+  },
+  alertsSection: {
+    marginTop: 32,
+    marginBottom: 20,
+  },
+  alertsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginHorizontal: 20,
+    marginBottom: 16,
+  },
+});
