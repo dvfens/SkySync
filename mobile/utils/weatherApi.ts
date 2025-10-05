@@ -8,6 +8,47 @@ import {
 
 const NASA_BASE_URL = 'https://power.larc.nasa.gov/api/temporal/hourly/point';
 
+async function fetchFromOpenMeteo(location: LocationData): Promise<{ current: WeatherData; hourly: HourlyForecast[] }> {
+  const { latitude, longitude } = location;
+  const params = new URLSearchParams({
+    latitude: latitude.toFixed(4),
+    longitude: longitude.toFixed(4),
+    hourly: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
+    current: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
+    timezone: 'auto'
+  });
+  const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`OpenMeteo error: ${res.status}`);
+  const data = await res.json();
+  const nowIdx = 0;
+  const current: WeatherData = {
+    temperature: data.current?.temperature_2m ?? data.hourly?.temperature_2m?.[nowIdx] ?? 0,
+    humidity: data.current?.relative_humidity_2m ?? data.hourly?.relative_humidity_2m?.[nowIdx] ?? 0,
+    windSpeed: data.current?.wind_speed_10m ?? data.hourly?.wind_speed_10m?.[nowIdx] ?? 0,
+    precipitation: data.current?.precipitation ?? data.hourly?.precipitation?.[nowIdx] ?? 0,
+    condition: determineCondition(
+      data.current?.temperature_2m ?? 0,
+      data.current?.precipitation ?? 0,
+      data.current?.relative_humidity_2m ?? 0,
+      new Date()
+    ),
+    timestamp: new Date().toISOString(),
+  };
+  const hourly: HourlyForecast[] = (data.hourly?.time || []).slice(0, 12).map((t: string, i: number) => ({
+    hour: new Date(t).toTimeString().slice(0, 5),
+    temperature: data.hourly.temperature_2m?.[i] ?? 0,
+    condition: determineCondition(
+      data.hourly.temperature_2m?.[i] ?? 0,
+      data.hourly.precipitation?.[i] ?? 0,
+      data.hourly.relative_humidity_2m?.[i] ?? 0,
+      new Date(t)
+    ),
+    precipitation: data.hourly.precipitation?.[i] ?? 0,
+  }));
+  return { current, hourly };
+}
+
 export async function fetchWeatherData(
   location: LocationData
 ): Promise<{ current: WeatherData; hourly: HourlyForecast[] }> {
@@ -44,36 +85,38 @@ export async function fetchWeatherData(
 
     const data: NASAPowerResponse = await response.json();
     const { parameter } = data.properties;
-
-    const timestamps = Object.keys(parameter.T2M).sort();
+    const timestamps = Object.keys(parameter.T2M || {}).sort();
+    if (timestamps.length === 0) throw new Error('NASA POWER returned no data');
     const latestTimestamp = timestamps[timestamps.length - 1];
 
-    const temperature = parameter.T2M[latestTimestamp];
-    const humidity = parameter.RH2M[latestTimestamp];
-    const windSpeed = parameter.WS10M[latestTimestamp];
-    const precipitation = parameter.PRECTOTCORR[latestTimestamp];
+    const t = parameter.T2M?.[latestTimestamp];
+    const h = parameter.RH2M?.[latestTimestamp];
+    const w = parameter.WS10M?.[latestTimestamp];
+    const p = parameter.PRECTOTCORR?.[latestTimestamp];
 
-    const condition = determineCondition(
-      temperature,
-      precipitation,
-      humidity,
-      new Date()
-    );
+    const hasValid = [t, h, w, p].every((v) => typeof v === 'number' && v > -900);
+
+    if (!hasValid) {
+      // Fallback to Open-Meteo to avoid -999 values
+      return await fetchFromOpenMeteo(location);
+    }
+
+    const condition = determineCondition(t, p, h, new Date());
 
     const current: WeatherData = {
-      temperature,
-      humidity,
-      windSpeed,
-      precipitation,
+      temperature: t,
+      humidity: h,
+      windSpeed: w,
+      precipitation: p,
       condition,
       timestamp: latestTimestamp,
     };
 
     const hourly: HourlyForecast[] = timestamps.slice(-12).map((ts) => {
       const hour = ts.substring(8, 10) + ':00';
-      const temp = parameter.T2M[ts];
-      const precip = parameter.PRECTOTCORR[ts];
-      const hum = parameter.RH2M[ts];
+      const temp = parameter.T2M?.[ts] ?? 0;
+      const precip = parameter.PRECTOTCORR?.[ts] ?? 0;
+      const hum = parameter.RH2M?.[ts] ?? 0;
 
       return {
         hour,
@@ -85,8 +128,9 @@ export async function fetchWeatherData(
 
     return { current, hourly };
   } catch (error) {
-    console.error('Error fetching weather data:', error);
-    throw error;
+    // Any failure -> fallback
+    console.error('Error fetching NASA POWER data, falling back to Open-Meteo:', error);
+    return await fetchFromOpenMeteo(location);
   }
 }
 

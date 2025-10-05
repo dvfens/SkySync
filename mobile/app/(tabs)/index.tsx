@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, TextInput, TouchableOpacity } from 'react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import GradientBackground from '@/components/GradientBackground';
@@ -8,7 +8,7 @@ import AlertBanner from '@/components/AlertBanner';
 import { WeatherData, HourlyForecast as HourlyForecastType, WeatherAlert, LocationData } from '@/types/weather';
 import { fetchWeatherData } from '@/utils/weatherApi';
 import { fetchWeatherAlerts } from '@/utils/alertsApi';
-import { getCurrentLocation } from '@/utils/locationService';
+import { getCurrentLocation, searchPlace } from '@/utils/locationService';
 import { RefreshCw } from 'lucide-react-native';
 
 export default function HomeScreen() {
@@ -19,8 +19,10 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState<string>('');
+  const [searching, setSearching] = useState<boolean>(false);
 
-  const loadWeatherData = async (showRefreshIndicator = false) => {
+  const loadWeatherData = async (showRefreshIndicator = false, overrideLocation?: LocationData) => {
     try {
       if (showRefreshIndicator) {
         setRefreshing(true);
@@ -29,7 +31,7 @@ export default function HomeScreen() {
       }
       setError(null);
 
-      const userLocation = await getCurrentLocation();
+      const userLocation = overrideLocation || await getCurrentLocation();
       if (!userLocation) {
         setError('Unable to get location. Please enable location permissions.');
         return;
@@ -66,6 +68,27 @@ export default function HomeScreen() {
     loadWeatherData(true);
   }, []);
 
+  const onSearch = useCallback(async () => {
+    const q = query.trim();
+    if (!q) return;
+    try {
+      setSearching(true);
+      setError(null);
+      // Geocode using Open-Meteo geocoding API (no key)
+      const newLoc = await searchPlace(q);
+      if (!newLoc) {
+        setError('Place not found. Try a different query.');
+        return;
+      }
+      await loadWeatherData(false, newLoc);
+    } catch (e) {
+      console.error(e);
+      setError('Search failed. Please try again.');
+    } finally {
+      setSearching(false);
+    }
+  }, [query]);
+
   if (loading) {
     return (
       <GradientBackground condition="cloudy">
@@ -97,6 +120,20 @@ export default function HomeScreen() {
   return (
     <GradientBackground condition={weather.condition}>
       <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.searchBarContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search place (e.g., London, UK)"
+            placeholderTextColor="#cbd5e1"
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={onSearch}
+            returnKeyType="search"
+          />
+          <TouchableOpacity style={styles.searchButton} onPress={onSearch} disabled={searching}>
+            <Text style={styles.searchButtonText}>{searching ? '...' : 'Search'}</Text>
+          </TouchableOpacity>
+        </View>
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -169,6 +206,33 @@ const styles = StyleSheet.create({
   alertsSection: {
     marginTop: 32,
     marginBottom: 20,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    color: '#FFFFFF',
+  },
+  searchButton: {
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   alertsTitle: {
     fontSize: 18,
