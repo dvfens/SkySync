@@ -10,6 +10,7 @@ export async function fetchWeatherAlerts(
   const url = `${NWS_BASE_URL}?point=${latitude.toFixed(4)},${longitude.toFixed(4)}`;
 
   try {
+    console.log('[alertsApi] NWS request', { point: `${latitude.toFixed(4)},${longitude.toFixed(4)}` });
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'WeatherApp/1.0',
@@ -26,6 +27,7 @@ export async function fetchWeatherAlerts(
     }
 
     const data: NWSAlertsResponse = await response.json();
+    console.log('[alertsApi] NWS alerts count', data.features?.length || 0);
 
     const alerts: WeatherAlert[] = data.features.map((feature) => ({
       id: feature.id,

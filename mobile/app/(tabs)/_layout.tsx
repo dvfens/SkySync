@@ -7,29 +7,35 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+          backgroundColor: 'rgba(17, 24, 39, 0.8)',
           borderTopWidth: 0,
           position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
+          bottom: 12,
+          left: 12,
+          right: 12,
           elevation: 0,
-          height: 60,
-          paddingBottom: 8,
+          height: 64,
+          paddingBottom: 10,
+          paddingTop: 6,
+          borderRadius: 16,
+          overflow: 'hidden',
         },
         tabBarActiveTintColor: '#FFFFFF',
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.5)',
+        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.6)',
         tabBarLabelStyle: {
           fontSize: 12,
-          fontWeight: '600',
+          fontWeight: '700',
+        },
+        tabBarItemStyle: {
+          paddingVertical: 6,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Weather',
-          tabBarIcon: ({ size, color }) => (
-            <Cloud size={size} color={color} strokeWidth={2} />
+          tabBarIcon: ({ focused, size, color }) => (
+            <Cloud size={focused ? size + 2 : size} color={color} strokeWidth={2} />
           ),
         }}
       />
@@ -37,8 +43,8 @@ export default function TabLayout() {
         name="alerts"
         options={{
           title: 'Alerts',
-          tabBarIcon: ({ size, color }) => (
-            <AlertTriangle size={size} color={color} strokeWidth={2} />
+          tabBarIcon: ({ focused, size, color }) => (
+            <AlertTriangle size={focused ? size + 2 : size} color={color} strokeWidth={2} />
           ),
         }}
       />

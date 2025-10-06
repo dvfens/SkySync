@@ -61,46 +61,70 @@ export async function fetchWeatherData(
 
   // If a targetDate (YYYY-MM-DD) is provided, fetch that day's hourly forecast via Open‑Meteo
   if (targetDate) {
+    console.log('[weatherApi] Using Open-Meteo date mode', {
+      latitude: Number(latitude.toFixed(4)),
+      longitude: Number(longitude.toFixed(4)),
+      targetDate,
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const isPast = targetDate < today;
+    const base = isPast
+      ? 'https://archive-api.open-meteo.com/v1/archive'
+      : 'https://api.open-meteo.com/v1/forecast';
     const params = new URLSearchParams({
       latitude: latitude.toFixed(4),
       longitude: longitude.toFixed(4),
       hourly: 'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',
       timezone: 'auto',
-      start_date: targetDate,
-      end_date: targetDate,
     });
-    const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+    if (isPast) {
+      params.set('start_date', targetDate);
+      params.set('end_date', targetDate);
+    } else {
+      // Forecast API: request enough days and filter client-side
+      params.set('forecast_days', '16');
+    }
+    const url = `${base}?${params.toString()}`;
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`OpenMeteo date error: ${res.status}`);
       const data = await res.json();
       const times: string[] = data.hourly?.time || [];
-      const idxNoon = Math.max(0, times.findIndex((t) => new Date(t).getHours() === 12));
-
-      const current: WeatherData = {
-        temperature: data.hourly?.temperature_2m?.[idxNoon] ?? 0,
-        humidity: data.hourly?.relative_humidity_2m?.[idxNoon] ?? 0,
-        windSpeed: data.hourly?.wind_speed_10m?.[idxNoon] ?? 0,
-        precipitation: data.hourly?.precipitation?.[idxNoon] ?? 0,
-        condition: determineCondition(
-          data.hourly?.temperature_2m?.[idxNoon] ?? 0,
-          data.hourly?.precipitation?.[idxNoon] ?? 0,
-          data.hourly?.relative_humidity_2m?.[idxNoon] ?? 0,
-          new Date(times[idxNoon] || `${targetDate}T12:00:00`)
-        ),
-        timestamp: times[idxNoon] || `${targetDate}T12:00:00`,
+      const filteredIdx: number[] = times
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => t.startsWith(targetDate))
+        .map(({ i }) => i);
+      const pick = () => {
+        const noon = filteredIdx.find((i) => new Date(times[i]).getHours() === 12);
+        return noon !== undefined ? noon : (filteredIdx[0] ?? 0);
       };
-      const hourly: HourlyForecast[] = times.map((t: string, i: number) => ({
-        hour: new Date(t).toTimeString().slice(0, 5),
-        temperature: data.hourly?.temperature_2m?.[i] ?? 0,
+      const idx = pick();
+      const current: WeatherData = {
+        temperature: data.hourly?.temperature_2m?.[idx] ?? 0,
+        humidity: data.hourly?.relative_humidity_2m?.[idx] ?? 0,
+        windSpeed: data.hourly?.wind_speed_10m?.[idx] ?? 0,
+        precipitation: data.hourly?.precipitation?.[idx] ?? 0,
         condition: determineCondition(
-          data.hourly?.temperature_2m?.[i] ?? 0,
-          data.hourly?.precipitation?.[i] ?? 0,
-          data.hourly?.relative_humidity_2m?.[i] ?? 0,
-          new Date(t)
+          data.hourly?.temperature_2m?.[idx] ?? 0,
+          data.hourly?.precipitation?.[idx] ?? 0,
+          data.hourly?.relative_humidity_2m?.[idx] ?? 0,
+          new Date(times[idx] || `${targetDate}T12:00:00`)
         ),
-        precipitation: data.hourly?.precipitation?.[i] ?? 0,
-      }));
+        timestamp: times[idx] || `${targetDate}T12:00:00`,
+      };
+      const hourly: HourlyForecast[] = (filteredIdx.length ? filteredIdx : times.map((_, i) => i))
+        .slice(0, 12)
+        .map((i) => ({
+          hour: new Date(times[i]).toTimeString().slice(0, 5),
+          temperature: data.hourly?.temperature_2m?.[i] ?? 0,
+          condition: determineCondition(
+            data.hourly?.temperature_2m?.[i] ?? 0,
+            data.hourly?.precipitation?.[i] ?? 0,
+            data.hourly?.relative_humidity_2m?.[i] ?? 0,
+            new Date(times[i])
+          ),
+          precipitation: data.hourly?.precipitation?.[i] ?? 0,
+        }));
       return { current, hourly };
     } catch (e) {
       // Fall through to default path which will try NASA or Open‑Meteo current
@@ -128,6 +152,11 @@ export async function fetchWeatherData(
   const url = `${NASA_BASE_URL}?${params.toString()}`;
 
   try {
+    console.log('[weatherApi] Using NASA POWER (current window)', {
+      latitude: Number(latitude.toFixed(4)),
+      longitude: Number(longitude.toFixed(4)),
+      range: { start: formatDate(startDate), end: formatDate(endDate) },
+    });
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`NASA API error: ${response.status}`);
@@ -148,6 +177,7 @@ export async function fetchWeatherData(
 
     if (!hasValid) {
       // Fallback to Open-Meteo to avoid -999 values
+      console.log('[weatherApi] NASA returned invalid values, falling back to Open-Meteo');
       return await fetchFromOpenMeteo(location);
     }
 

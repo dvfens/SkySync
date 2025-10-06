@@ -131,3 +131,31 @@ export async function searchPlace(query: string): Promise<LocationData | null> {
     return null;
   }
 }
+
+export interface PlaceSuggestion extends LocationData {
+  label: string;
+}
+
+export async function searchPlaceSuggestions(query: string): Promise<PlaceSuggestion[]> {
+  try {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const params = new URLSearchParams({ name: trimmed, count: '6', language: 'en', format: 'json' });
+    const url = `${OM_GEOCODE_URL}?${params.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const results = Array.isArray(data?.results) ? data.results : [];
+    return results.map((r: any) => ({
+      latitude: r.latitude,
+      longitude: r.longitude,
+      city: r.name,
+      region: r.admin1 || r.country,
+      label: [r.name, r.admin1, r.country].filter(Boolean).join(', '),
+    }));
+  } catch (e) {
+    console.error('Error fetching place suggestions:', e);
+    return [];
+  }
+}

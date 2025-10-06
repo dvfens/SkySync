@@ -13,6 +13,9 @@ export async function fetchNasaSpaceWeatherAlerts(_location?: LocationData): Pro
   // DONKI alerts are global space-weather alerts; not location-specific
   try {
     const apiKey = process.env.EXPO_PUBLIC_NASA_API_KEY || 'DEMO_KEY';
+    if (apiKey === 'DEMO_KEY') {
+      console.log('[nasaAlertsApi] Using DEMO_KEY (rate-limited). Set EXPO_PUBLIC_NASA_API_KEY for production.');
+    }
 
     const end = new Date();
     const start = new Date();
@@ -27,6 +30,7 @@ export async function fetchNasaSpaceWeatherAlerts(_location?: LocationData): Pro
     });
 
     const url = `${DONKI_BASE_URL}?${params.toString()}`;
+    console.log('[nasaAlertsApi] DONKI request', { start: params.get('startDate'), end: params.get('endDate') });
     const res = await fetch(url);
     if (!res.ok) {
       // If DONKI throttles or key is missing, just return no alerts
